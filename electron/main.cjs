@@ -5,6 +5,7 @@ const {
   Menu,
   ipcMain,
   nativeImage,
+  desktopCapturer,
   net: electronNet,
   dialog,
   shell,
@@ -37,6 +38,13 @@ let booting = false;
 let lastLogs = "";
 let dshVersion = "";
 let updating = false;
+const recState = {
+  active: false,
+  win: null,
+  writeStream: null,
+  filePath: null,
+  bytes: 0,
+};
 
 const RES = (p) => path.join(__dirname, p);
 
@@ -168,6 +176,97 @@ function updateDsh() {
       });
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Session recording: desktopCapturer (primary screen) -> hidden window with
+// MediaRecorder (VP9 + system audio when available) -> chunked IPC -> file.
+// ---------------------------------------------------------------------------
+async function ensureRecorderWindow() {
+  return new Promise((resolve, reject) => {
+    if (recState.win && !recState.win.isDestroyed()) return resolve();
+    recState.win = new BrowserWindow({
+      show: false,
+      width: 1,
+      height: 1,
+      webPreferences: {
+        preload: RES("recorder-preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    recState.win.webContents.once("did-finish-load", () => resolve());
+    recState.win.loadFile(RES("recorder.html")).catch(reject);
+  });
+}
+
+async function startRecording() {
+  if (recState.active) return;
+  try {
+    const sources = await desktopCapturer.getSources({ types: ["screen"] });
+    if (!sources.length) throw new Error("未找到可录制的屏幕");
+    const source = sources[0];
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[:T]/g, "-")
+      .slice(0, 19);
+    recState.filePath = path.join(
+      app.getPath("downloads"),
+      `DSH-Recording-${stamp}.webm`
+    );
+    recState.writeStream = fs.createWriteStream(recState.filePath);
+    recState.bytes = 0;
+    await ensureRecorderWindow();
+    recState.win.webContents.send("rec:begin", { sourceId: source.id });
+    recState.active = true;
+    log(`开始录制: ${recState.filePath}`);
+    refreshTray();
+  } catch (e) {
+    log("启动录制失败: " + ((e && e.message) || e));
+    cleanupRecording();
+    new Notification({
+      title: "录制失败",
+      body: String((e && e.message) || e),
+    }).show();
+  }
+}
+
+function stopRecording() {
+  if (!recState.active) return;
+  if (recState.win && !recState.win.isDestroyed()) {
+    recState.win.webContents.send("rec:stop");
+  }
+}
+
+function toggleRecording() {
+  if (recState.active) stopRecording();
+  else startRecording();
+}
+
+function finalizeRecording() {
+  const p = recState.filePath;
+  const size = recState.bytes;
+  if (recState.writeStream) {
+    recState.writeStream.end(() => {
+      new Notification({
+        title: "录制已保存",
+        body: `${(size / 1048576).toFixed(1)} MB — ${p}`,
+      }).show();
+    });
+  }
+  log(`录制已保存: ${p} (${size} bytes)`);
+  cleanupRecording();
+  refreshTray();
+}
+
+function cleanupRecording() {
+  recState.active = false;
+  if (recState.writeStream) {
+    try { recState.writeStream.end(); } catch (_) { /* noop */ }
+  }
+  recState.writeStream = null;
+  if (recState.win && !recState.win.isDestroyed()) recState.win.destroy();
+  recState.win = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +548,10 @@ function buildTrayMenu() {
     { label: dshVersion ? `dsh ${dshVersion}` : "dsh 版本未知", enabled: false },
     { label: `应用 v${app.getVersion()}`, enabled: false },
     { type: "separator" },
+    {
+      label: recState.active ? "■ 停止录制" : "● 开始录制",
+      click: () => toggleRecording(),
+    },
     { label: "显示窗口", click: () => ensureWindow() },
     { label: "更新 dsh 内核…", click: () => updateDsh() },
     { label: "检查应用更新…", click: () => checkAppUpdate() },
@@ -481,10 +584,26 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => ensureWindow());
+  app.on("second-instance", (_e, argv) => {
+    ensureWindow();
+    if (argv.includes("--record")) toggleRecording();
+  });
   ipcMain.on("dsh:retry", () => {
     killDsh();
     bootstrap();
+  });
+  ipcMain.on("rec:chunk", (_e, u8) => {
+    if (!recState.writeStream) return;
+    const buf = Buffer.from(u8);
+    recState.writeStream.write(buf);
+    recState.bytes += buf.length;
+  });
+  ipcMain.on("rec:ended", () => finalizeRecording());
+  ipcMain.on("rec:error", (_e, msg) => {
+    log("录制错误: " + msg);
+    cleanupRecording();
+    refreshTray();
+    new Notification({ title: "录制失败", body: String(msg) }).show();
   });
   app.whenReady().then(() => {
     app.setAppUserModelId("com.deepseek.harness.desktop");

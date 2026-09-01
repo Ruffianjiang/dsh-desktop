@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>dsh-recorder</title>
+</head>
+<body>
+  <script>
+    (async () => {
+      const api = window.recorder;
+      let recorder = null;
+
+      api.onBegin(async ({ sourceId }) => {
+        try {
+          const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+            ? "video/webm;codecs=vp9,opus"
+            : "video/webm";
+          const videoConstraint = {
+            mandatory: {
+              chromeMediaSource: "desktop",
+              chromeMediaSourceId: sourceId,
+              maxFrameRate: 15,
+            },
+          };
+          let stream;
+          try {
+            // Windows loopback system audio; falls back to video-only below.
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: { mandatory: { chromeMediaSource: "desktop" } },
+              video: videoConstraint,
+            });
+          } catch (_e) {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: videoConstraint,
+            });
+          }
+
+          recorder = new MediaRecorder(stream, {
+            mimeType: mime,
+            videoBitsPerSecond: 2500000,
+          });
+          recorder.ondataavailable = (ev) => {
+            if (ev.data && ev.data.size > 0) {
+              ev.data.arrayBuffer().then((ab) => api.chunk(new Uint8Array(ab)));
+            }
+          };
+          recorder.onerror = (ev) => api.error(String((ev && ev.error) || "recorder error"));
+          recorder.onstop = () => {
+            try { stream.getTracks().forEach((t) => t.stop()); } catch (_e) { /* noop */ }
+            api.ended();
+          };
+          recorder.start(1000);
+        } catch (e) {
+          api.error(String((e && e.message) || e));
+        }
+      });
+
+      api.onStop(() => {
+        try {
+          if (recorder && recorder.state !== "inactive") recorder.stop();
+        } catch (e) {
+          api.error(String(e));
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -98,7 +98,9 @@ pnpm install && python scripts/make_icons.py && pnpm tauri dev
       （DSH 仍是 Developer Preview，**预期 breaking changes**，建议固定全局 dsh 版本）
 - [x] 托盘「更新 dsh 内核」：执行 `npm i -g @deepseek-ai/dsh@latest` 并自动重启
 - [x] GitHub Releases 挂载打包产物（v0.1.0 起）
-- [ ] 会话录制（Tauri 版已有 recorder 桩；Electron 版可接 desktopCapturer）
+- [x] 会话录制：托盘「开始/停止录制」，抓取主屏（VP9+系统音频，失败自动降级
+      纯视频），流式写入 `Downloads/DSH-Recording-*.webm`；支持命令行
+      `DSH-Desktop-<ver>-portable.exe --record` 切换（向已运行实例发指令）
 - [x] 应用自身自动更新：托盘「检查应用更新…」查 GitHub Releases latest，下载
       portable exe 到 Downloads，弹窗一键重启升级（`will-quit` 拉起新 exe，
       利用 portable 自解压延迟避开单实例锁）
