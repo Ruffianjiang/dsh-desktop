@@ -1,0 +1,128 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #0f1115;
+  color: #e6e6e6;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #171a21;
+  border-bottom: 1px solid #262b36;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.badge.ok {
+  background: #16351f;
+  color: #6ee7a0;
+}
+
+.badge.pending {
+  background: #3a3320;
+  color: #f2c14e;
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  background: #2b6cff;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button:hover {
+  background: #1f5be0;
+}
+
+button.secondary {
+  background: #2a2f3a;
+}
+
+button.secondary:hover {
+  background: #353b48;
+}
+
+.error {
+  background: #3a1d1d;
+  color: #ff9b9b;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.content {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.dsh-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #9aa3b2;
+}
+
+.placeholder .hint {
+  font-size: 12px;
+  color: #6b7280;
+  max-width: 460px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+code {
+  background: #262b36;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}

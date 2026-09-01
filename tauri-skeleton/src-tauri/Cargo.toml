@@ -1,0 +1,27 @@
+[package]
+name = "dsh-desktop"
+version = "0.1.0"
+description = "DeepSeek Harness desktop shell built on Tauri 2"
+authors = ["your-name"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "dsh_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["tray-icon", "image-png", "menu"] }
+tauri-plugin-shell = "2.0.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
