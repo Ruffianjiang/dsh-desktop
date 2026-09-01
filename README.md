@@ -52,6 +52,10 @@ npm run dist:portable
 npm run dist:nsis
 ```
 
+> **国内加速**：Electron 二进制默认从 GitHub 下载较慢，`npm install` 前可设置
+> `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`
+> （PowerShell：`$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"`）。
+
 ## 环境变量
 
 | 变量 | 作用 | 默认 |
