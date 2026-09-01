@@ -23,6 +23,8 @@ let dshPort = DEFAULT_PORT;
 let quitting = false;
 let booting = false;
 let lastLogs = "";
+let dshVersion = "";
+let updating = false;
 
 const RES = (p) => path.join(__dirname, p);
 
@@ -82,6 +84,78 @@ function killDsh() {
   } catch (e) {
     log("kill 失败: " + e.message);
   }
+}
+
+// Probe `dsh --version` (non-fatal; null if unavailable within 15s).
+function probeDshVersion() {
+  return new Promise((resolve) => {
+    const child = spawn(dshBin(), ["--version"], {
+      windowsHide: true,
+      shell: process.platform === "win32",
+      env: process.env,
+    });
+    let out = "";
+    let settled = false;
+    const finish = (v) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { child.kill(); } catch (_) { /* noop */ }
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(null), 15000);
+    child.stdout.on("data", (d) => { out += String(d); });
+    child.stderr.on("data", (d) => { out += String(d); });
+    child.on("error", () => finish(null));
+    child.on("exit", () => {
+      const line = out.trim().split(/\r?\n/).filter(Boolean).pop() || "";
+      const m = line.trim().match(/^[\w.+-]+$/);
+      finish(m ? m[0] : null);
+    });
+  });
+}
+
+// Tray-triggered kernel update: npm i -g @deepseek-ai/dsh@latest, then restart.
+function updateDsh() {
+  if (updating) return;
+  updating = true;
+  log("开始更新 dsh 内核: npm i -g @deepseek-ai/dsh@latest");
+  sendStatus({
+    state: "starting",
+    message: "正在更新 dsh 内核（npm i -g @deepseek-ai/dsh@latest）…",
+  });
+  const child = spawn("npm", ["i", "-g", "@deepseek-ai/dsh@latest"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    shell: process.platform === "win32",
+    env: process.env,
+  });
+  child.stdout.on("data", (d) => log(String(d).trim()));
+  child.stderr.on("data", (d) => log("[npm] " + String(d).trim()));
+  child.on("error", (err) => {
+    updating = false;
+    sendStatus({
+      state: "failed",
+      message: `更新失败：${err.message}`,
+      logs: lastLogs,
+    });
+  });
+  child.on("exit", (code) => {
+    updating = false;
+    if (code === 0) {
+      log("dsh 更新完成，重启内核…");
+      dshVersion = "";
+      killDsh();
+      bootstrap();
+    } else {
+      log(`npm 更新失败 code=${code}`);
+      sendStatus({
+        state: "failed",
+        message: `dsh 更新失败（npm code=${code}），详见日志。`,
+        logs: lastLogs,
+      });
+    }
+  });
 }
 
 function spawnDsh() {
@@ -150,9 +224,11 @@ async function bootstrap() {
   if (booting) return;
   booting = true;
   ensureWindow();
+  dshVersion = (await probeDshVersion()) || dshVersion;
+  refreshTray();
   sendStatus({
     state: "starting",
-    message: `正在启动 DeepSeek Harness（端口 ${DEFAULT_PORT}）…`,
+    message: `正在启动 DeepSeek Harness${dshVersion ? " " + dshVersion : ""}（端口 ${DEFAULT_PORT}）…`,
   });
   const ok = await ensureDshRunning();
   booting = false;
@@ -198,13 +274,16 @@ function ensureWindow() {
   return mainWindow;
 }
 
-function createTray() {
-  if (tray) return;
-  const icon = nativeImage.createFromPath(RES("assets/icon.png"));
-  tray = new Tray(icon);
-  tray.setToolTip("DSH Desktop");
-  const menu = Menu.buildFromTemplate([
+function trayTooltip() {
+  return dshVersion ? `DSH Desktop — dsh ${dshVersion}` : "DSH Desktop";
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: dshVersion ? `dsh ${dshVersion}` : "dsh 版本未知", enabled: false },
+    { type: "separator" },
     { label: "显示窗口", click: () => ensureWindow() },
+    { label: "更新 dsh 内核…", click: () => updateDsh() },
     { type: "separator" },
     {
       label: "退出",
@@ -214,7 +293,19 @@ function createTray() {
       },
     },
   ]);
-  tray.setContextMenu(menu);
+}
+
+function refreshTray() {
+  if (!tray) return;
+  tray.setToolTip(trayTooltip());
+  tray.setContextMenu(buildTrayMenu());
+}
+
+function createTray() {
+  if (tray) return;
+  const icon = nativeImage.createFromPath(RES("assets/icon.png"));
+  tray = new Tray(icon);
+  refreshTray();
   tray.on("click", () => ensureWindow());
 }
 

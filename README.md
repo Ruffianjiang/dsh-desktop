@@ -94,8 +94,9 @@ pnpm install && python scripts/make_icons.py && pnpm tauri dev
 
 ## 已知限制 / Roadmap
 
-- [ ] 自动更新（下载新版 dsh 二进制）
+- [x] 内核版本对齐校验：启动时探测 `dsh --version`，版本号展示于托盘菜单与 tooltip
+      （DSH 仍是 Developer Preview，**预期 breaking changes**，建议固定全局 dsh 版本）
+- [x] 托盘「更新 dsh 内核」：执行 `npm i -g @deepseek-ai/dsh@latest` 并自动重启
+- [x] GitHub Releases 挂载打包产物（v0.1.0 起）
 - [ ] 会话录制（Tauri 版已有 recorder 桩；Electron 版可接 desktopCapturer）
-- [ ] 内核版本对齐校验：DSH 仍是 Developer Preview（`@deepseek-ai/dsh@0.1.0-rc.6`），
-      **预期 breaking changes**，建议固定全局 dsh 版本
-- [ ] GitHub Releases 挂载打包产物
+- [ ] 应用自身自动更新（检查 GitHub Releases 下载新版 exe）
