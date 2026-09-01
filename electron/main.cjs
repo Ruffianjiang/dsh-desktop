@@ -1,5 +1,17 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  ipcMain,
+  nativeImage,
+  net: electronNet,
+  dialog,
+  shell,
+  Notification,
+} = require("electron");
 const { spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 const net = require("net");
 
@@ -158,6 +170,160 @@ function updateDsh() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Self-update: check GitHub Releases, download the portable exe, restart.
+// Uses Electron `net` (Chromium stack) so the system proxy applies automatically.
+// ---------------------------------------------------------------------------
+const REPO = "Ruffianjiang/dsh-desktop";
+let pendingUpdatePath = null;
+
+function parseVer(v) {
+  return String(v)
+    .replace(/^v/i, "")
+    .split(".")
+    .map((n) => parseInt(n, 10) || 0);
+}
+
+function isNewer(a, b) {
+  const A = parseVer(a);
+  const B = parseVer(b);
+  for (let i = 0; i < 3; i++) {
+    if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) > (B[i] || 0);
+  }
+  return false;
+}
+
+function ghGetJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = electronNet.request({
+      url,
+      headers: { "User-Agent": "dsh-desktop-app" },
+    });
+    let body = "";
+    const timer = setTimeout(() => {
+      try { req.abort(); } catch (_) { /* noop */ }
+      reject(new Error("请求超时"));
+    }, 15000);
+    req.on("response", (res) => {
+      res.on("data", (c) => { body += String(c); });
+      res.on("end", () => {
+        clearTimeout(timer);
+        if (res.statusCode !== 200) {
+          return reject(new Error("HTTP " + res.statusCode));
+        }
+        try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
+      });
+    });
+    req.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    req.end();
+  });
+}
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const req = electronNet.request({
+      url,
+      headers: { "User-Agent": "dsh-desktop-app" },
+    });
+    let received = 0;
+    let lastLogged = 0;
+    const timer = setTimeout(() => {
+      try { req.abort(); } catch (_) { /* noop */ }
+      reject(new Error("下载超时"));
+    }, 10 * 60 * 1000);
+    req.on("response", (res) => {
+      if (res.statusCode !== 200) {
+        clearTimeout(timer);
+        return reject(new Error("HTTP " + res.statusCode));
+      }
+      const file = fs.createWriteStream(dest);
+      res.on("data", (c) => {
+        received += c.length;
+        const mb = received / 1048576;
+        if (mb - lastLogged >= 10) {
+          lastLogged = mb;
+          log(`下载中 ${mb.toFixed(1)} MB…`);
+        }
+      });
+      res.pipe(file);
+      file.on("finish", () => {
+        file.close(() => {
+          clearTimeout(timer);
+          log(`下载完成: ${dest}`);
+          resolve(dest);
+        });
+      });
+      file.on("error", (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+    });
+    req.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    req.end();
+  });
+}
+
+function applyUpdate(filePath) {
+  pendingUpdatePath = filePath;
+  quitting = true;
+  killDsh();
+  app.quit();
+}
+
+async function checkAppUpdate() {
+  try {
+    log("检查应用更新…");
+    const rel = await ghGetJson(`https://api.github.com/repos/${REPO}/releases/latest`);
+    const tag = rel.tag_name || "";
+    if (!isNewer(tag, app.getVersion())) {
+      new Notification({
+        title: "DSH Desktop",
+        body: `已是最新版本（v${app.getVersion()}）`,
+      }).show();
+      return;
+    }
+    const asset = (rel.assets || []).find((a) =>
+      /^DSH-Desktop-.*-portable\.exe$/.test(a.name)
+    );
+    if (!asset) {
+      new Notification({
+        title: "发现新版本",
+        body: `${tag} 已发布，但未找到 portable 安装包资产`,
+      }).show();
+      return;
+    }
+    new Notification({
+      title: "发现新版本",
+      body: `v${app.getVersion()} → ${tag}，开始下载…`,
+    }).show();
+    const dest = path.join(app.getPath("downloads"), asset.name);
+    await downloadFile(asset.browser_download_url, dest);
+    const r = await dialog.showMessageBox({
+      type: "info",
+      title: "更新就绪",
+      message: `${tag} 已下载完成`,
+      detail: `${dest}\n\n「立即重启升级」将退出当前应用并启动新版本。`,
+      buttons: ["立即重启升级", "打开下载目录", "稍后"],
+      defaultId: 0,
+      cancelId: 2,
+    });
+    if (r.response === 0) applyUpdate(dest);
+    else if (r.response === 1) shell.showItemInFolder(dest);
+  } catch (e) {
+    log("检查更新失败: " + ((e && e.message) || e));
+    new Notification({
+      title: "检查更新失败",
+      body: String((e && e.message) || e),
+    }).show();
+  }
+}
+
 function spawnDsh() {
   const args = ["web"];
   // Only pass --port when explicitly overridden; the default 3080 path uses
@@ -281,9 +447,11 @@ function trayTooltip() {
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: dshVersion ? `dsh ${dshVersion}` : "dsh 版本未知", enabled: false },
+    { label: `应用 v${app.getVersion()}`, enabled: false },
     { type: "separator" },
     { label: "显示窗口", click: () => ensureWindow() },
     { label: "更新 dsh 内核…", click: () => updateDsh() },
+    { label: "检查应用更新…", click: () => checkAppUpdate() },
     { type: "separator" },
     {
       label: "退出",
@@ -319,6 +487,7 @@ if (!gotLock) {
     bootstrap();
   });
   app.whenReady().then(() => {
+    app.setAppUserModelId("com.deepseek.harness.desktop");
     createTray();
     bootstrap();
   });
@@ -330,6 +499,19 @@ app.on("before-quit", () => {
 });
 app.on("will-quit", () => {
   killDsh();
+  if (pendingUpdatePath) {
+    // Launch the freshly downloaded portable exe while we exit. Its NSIS
+    // self-extraction takes a few seconds, by which time the single-instance
+    // lock of the old version has been released.
+    try {
+      const child = spawn(pendingUpdatePath, [], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      child.unref();
+    } catch (_) { /* noop */ }
+  }
 });
 // Keep running in tray on window close (all platforms) — exit via tray menu.
 app.on("window-all-closed", () => {});

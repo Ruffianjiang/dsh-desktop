@@ -99,4 +99,6 @@ pnpm install && python scripts/make_icons.py && pnpm tauri dev
 - [x] 托盘「更新 dsh 内核」：执行 `npm i -g @deepseek-ai/dsh@latest` 并自动重启
 - [x] GitHub Releases 挂载打包产物（v0.1.0 起）
 - [ ] 会话录制（Tauri 版已有 recorder 桩；Electron 版可接 desktopCapturer）
-- [ ] 应用自身自动更新（检查 GitHub Releases 下载新版 exe）
+- [x] 应用自身自动更新：托盘「检查应用更新…」查 GitHub Releases latest，下载
+      portable exe 到 Downloads，弹窗一键重启升级（`will-quit` 拉起新 exe，
+      利用 portable 自解压延迟避开单实例锁）
