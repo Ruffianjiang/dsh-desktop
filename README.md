@@ -46,7 +46,7 @@ npm start
 
 # 4. 打包 Windows portable 单文件 exe
 npm run dist:portable
-# 产物：release/DSH-Desktop-0.1.0-portable.exe
+# 产物：release/DSH-Desktop-<版本>-portable.exe（当前 v0.2.0）
 
 # 5.（可选）NSIS 安装包
 npm run dist:nsis
@@ -91,6 +91,28 @@ cd tauri-skeleton
 # 需要 Rust + MSVC Build Tools + WebView2（Win11 自带）
 pnpm install && python scripts/make_icons.py && pnpm tauri dev
 ```
+
+## 排障
+
+- **在 WorkBuddy / 类终端沙箱中启动即"假崩溃"**：若 shell 注入了
+  `ELECTRON_RUN_AS_NODE=1`（WorkBuddy 自身基于 Electron，会让子进程以纯 Node 模式运行），
+  Electron 主进程 API 不会被加载，`require("electron")` 返回的是 exe 路径字符串，
+  解构出的 `app` / `BrowserWindow` 全为 `undefined`，报
+  `Cannot read properties of undefined (reading 'requestSingleInstanceLock')`。
+  **这不是应用 bug**——在普通终端或双击 exe 启动不受影响。
+  沙箱内运行请改用：
+  ```bash
+  env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS node node_modules/electron/cli.js .
+  ```
+  （`NODE_OPTIONS` 里的 `node-language-shim` 也建议一并 unset）
+
+- **`dsh` 找不到**：应用通过 `dsh web` 拉起内核，需 `dsh` 在 PATH 中
+  （`npm i -g @deepseek-ai/dsh`）。缺失时会显示错误页并提示安装命令；也可用
+  `DSH_BIN` 指向自定义路径。
+
+- **窗口关闭后端口仍占用**：属正常 hide-to-tray 行为；彻底退出请用托盘「退出」，
+  应用会以 `taskkill /T /F` 回收 dsh 子进程树。若异常残留，手动
+  `taskkill /PID <pid> /T /F` 清理 3080 占用进程即可。
 
 ## 已知限制 / Roadmap
 
