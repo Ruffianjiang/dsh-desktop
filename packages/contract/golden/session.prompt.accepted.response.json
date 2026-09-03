@@ -1,0 +1,8 @@
+{
+  "type": "server-response",
+  "rpcId": "3ca98a73-797e-41f8-a511-66b0e58a0741",
+  "result": {
+    "ok": true,
+    "value": { "accepted": true }
+  }
+}

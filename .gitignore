@@ -3,3 +3,11 @@ release/
 dist/
 out/
 *.log
+
+# Dart / Flutter（v0.4+）
+.dart_tool/
+.packages
+build/
+*.g.dart
+apps/desktop_flutter/windows/flutter/ephemeral/
+apps/probe_cli/.dart_tool/

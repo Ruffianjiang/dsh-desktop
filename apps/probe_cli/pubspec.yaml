@@ -1,0 +1,13 @@
+name: probe_cli
+description: dsh 协议联调 CLI（M1/T4）。连真实 dsh web，完成一轮对话并流式打印。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  dsh_client:
+    path: ../../packages/client_dart
+
+dev_dependencies: {}

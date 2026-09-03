@@ -1,0 +1,17 @@
+{
+  "type": "server-response",
+  "rpcId": "0ddcd546-0de2-4a48-916e-1caf50546f3c",
+  "result": {
+    "ok": false,
+    "error": {
+      "code": "bad-request",
+      "message": "invalid payload for session.prompt",
+      "details": {
+        "issues": [
+          { "code": "invalid_union", "path": ["mode"], "message": "Invalid input" },
+          { "code": "invalid_type", "expected": "array", "path": ["content"], "message": "Invalid input: expected array, received string" }
+        ]
+      }
+    }
+  }
+}
