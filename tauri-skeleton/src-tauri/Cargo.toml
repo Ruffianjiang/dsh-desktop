@@ -1,6 +1,6 @@
 [package]
 name = "dsh-desktop"
-version = "0.1.0"
+version = "0.3.0"
 description = "DeepSeek Harness desktop shell built on Tauri 2"
 authors = ["your-name"]
 edition = "2021"
