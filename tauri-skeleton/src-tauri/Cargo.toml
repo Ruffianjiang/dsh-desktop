@@ -11,11 +11,14 @@ name = "dsh_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.0", features = [] }
+# Must stay on the same release line as the JS @tauri-apps/* packages (which
+# float to latest 2.x via ^2.0.0). Tauri's CLI aborts the build if the Rust
+# crate and the npm package major/minor versions mismatch.
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.0.0", features = ["tray-icon", "image-png", "menu"] }
-tauri-plugin-shell = "2.0.0"
+tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
+tauri-plugin-shell = "2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

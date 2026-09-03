@@ -1,0 +1,22 @@
+# Build configuration for the x86_64-pc-windows-gnu target.
+#
+# This lets us produce a small, native Tauri 2 executable WITHOUT MSVC
+# build tools and WITHOUT administrator rights, using a no-install MinGW-w64
+# toolchain (w64devkit) placed on PATH at build time.
+#
+# The MinGW bin dir must be on PATH. rustc locates the linker by its `.exe`
+# name. The remaining relocation fixes (COMPILER_PATH / LIBRARY_PATH and the
+# `-B` search paths for as/ld) are injected by build-tauri-gnu.sh via
+# environment variables, because w64devkit's gcc is built --prefix=/w64devkit
+# and cannot relocate on its own.
+#
+# Required env (all set by build-tauri-gnu.sh):
+#   PATH                   includes the MinGW bin dir
+#   COMPILER_PATH          <root>/libexec/gcc/x86_64-w64-mingw32/16.2.0
+#   LIBRARY_PATH           <root>/lib;<root>/lib/gcc/x86_64-w64-mingw32/16.2.0
+#   CFLAGS / CXXFLAGS      -B<root>/bin -B<root>/libexec/gcc/.../16.2.0
+#   CC/CXX/AR/WINDRES/...  full .exe paths (rustc & the cc crate need .exe)
+#   CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS  -C link-arg=-B<root>/bin -C link-arg=-B<libexec>
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc.exe"

@@ -33,24 +33,23 @@ pub fn ensure_dsh_binary() -> Result<(), String> {
         return Ok(());
     }
 
-    run(Command::new("git").args([
+    let mut git = Command::new("git");
+    git.args([
         "submodule",
         "update",
         "--init",
         "--recursive",
         SUBMODULE_DIR,
-    ]))
-    .map_err(|e| format!("submodule 初始化失败: {e}"))?;
+    ]);
+    run(git).map_err(|e| format!("submodule 初始化失败: {e}"))?;
 
-    run(Command::new("pnpm")
-        .args(["install"])
-        .current_dir(SUBMODULE_DIR))
-    .map_err(|e| format!("pnpm install 失败: {e}"))?;
+    let mut install = Command::new("pnpm");
+    install.args(["install"]).current_dir(SUBMODULE_DIR);
+    run(install).map_err(|e| format!("pnpm install 失败: {e}"))?;
 
-    run(Command::new("pnpm")
-        .args(["build"])
-        .current_dir(SUBMODULE_DIR))
-    .map_err(|e| format!("pnpm build 失败: {e}"))?;
+    let mut build = Command::new("pnpm");
+    build.args(["build"]).current_dir(SUBMODULE_DIR);
+    run(build).map_err(|e| format!("pnpm build 失败: {e}"))?;
 
     if !bin.exists() {
         return Err(format!(
