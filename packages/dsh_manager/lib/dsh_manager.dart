@@ -5,3 +5,5 @@ export 'src/models.dart';
 export 'src/node_env.dart';
 export 'src/registry.dart';
 export 'src/supervisor.dart';
+export 'src/version_catalog.dart';
+export 'src/install_service.dart';

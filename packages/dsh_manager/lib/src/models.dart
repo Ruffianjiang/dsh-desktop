@@ -29,7 +29,8 @@ class InstanceConfig {
   final String id;
   final String alias;
 
-  /// dsh profile（默认 web；纯 API profile 于 M2 实测后可选）。
+  /// dsh profile（固定 web：M2 实测确认纯 API profile 不可行——
+  /// dsh 的 /api carrier 与 web-runtime 耦合，禁用前端会同时撤掉 API）。
   final String profile;
 
   /// 期望监听地址/端口（dsh 启动参数映射待 M2 收口，health 探测用之）。
@@ -81,5 +82,7 @@ class InstanceState {
   InstanceStatus status;
   int? pid;
   int? lastExitCode;
+  /// 实际监听端口（config.port==0 时由分配器填入，用于多实例 / OS 分配场景）。
+  int? port;
   DateTime? startedAt;
 }

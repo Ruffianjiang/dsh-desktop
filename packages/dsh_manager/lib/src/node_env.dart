@@ -22,6 +22,13 @@ class NodeEnv {
     r'node_modules\dsh\lib\bin.js',
   ];
 
+  /// 由已知 node + dsh bin.js 直接构造（InstallService 安装结果接入用）。
+  factory NodeEnv.forDshCli(String nodePath, String dshCliJs) => NodeEnv(
+        nodePath: nodePath,
+        dshCliJs: dshCliJs,
+        dshVersion: null,
+      );
+
   /// 解析 node + dsh CLI 的 JS 入口。
   ///
   /// 优先级：环境变量 `DSH_CLI`（直接给 bin.js 路径）→ Windows `where dsh.cmd`

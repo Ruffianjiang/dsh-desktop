@@ -28,10 +28,13 @@ class InstanceSupervisor {
     Directory(File(logFile).parent.path).createSync(recursive: true);
     final sink = File(logFile).openWrite(mode: FileMode.append);
 
+    final port = config.port > 0 ? config.port : await _freeTcpPort();
     final args = <String>[
       env.dshCliJs,
       if (config.profile != 'web') '--profile=${config.profile}' else 'web',
       '--no-open',
+      '--host', config.host,
+      '--port', port.toString(),
     ];
 
     final proc = await Process.start(
@@ -45,6 +48,7 @@ class InstanceSupervisor {
     );
     _process = proc;
     state.pid = proc.pid;
+    state.port = port;
     state.startedAt = DateTime.now();
     state.status = InstanceStatus.starting;
 
@@ -60,7 +64,7 @@ class InstanceSupervisor {
       _process = null;
     }));
 
-    await _waitReady(config);
+    await _waitReady(config, port);
     state.status = InstanceStatus.running;
     return state;
   }
@@ -90,9 +94,19 @@ class InstanceSupervisor {
 
   InstanceState? get state => _state;
 
-  Future<void> _waitReady(InstanceConfig config) async {
+  /// 分配一个当前空闲的 TCP 端口：临时 bind 到 0 取系统分配值后释放。
+  /// 存在极小 TOCTOU 窗口（释放后、dsh 绑定前可能被抢占）；生产多实例由调用方
+  /// （RegistryStore / 端口分配器）显式指定 [InstanceConfig.port] 以避免冲突。
+  Future<int> _freeTcpPort() async {
+    final sock = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = sock.port;
+    await sock.close();
+    return port;
+  }
+
+  Future<void> _waitReady(InstanceConfig config, int port) async {
     final deadline = DateTime.now().add(readyTimeout);
-    final uri = Uri.parse('http://${config.host}:${config.port}/');
+    final uri = Uri.parse('http://${config.host}:$port/');
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     try {
       while (DateTime.now().isBefore(deadline)) {
