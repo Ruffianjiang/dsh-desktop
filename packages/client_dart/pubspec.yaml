@@ -1,0 +1,12 @@
+name: dsh_client
+description: L3 Dart client for dsh API (REST unary RPC + SSE). Gate-B v1.0, M1.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies: {}
+
+dev_dependencies:
+  lints: ^5.0.0

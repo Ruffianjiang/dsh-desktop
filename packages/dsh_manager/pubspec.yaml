@@ -1,0 +1,12 @@
+name: dsh_manager
+description: L2 引擎管理层（纯 Dart）：环境探测 / 实例生命周期 / 守护 / 注册表。Gate-B v1.0 §4。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies: {}
+
+dev_dependencies:
+  lints: ^5.0.0
