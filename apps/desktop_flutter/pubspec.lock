@@ -65,6 +65,20 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.0.2"
+  dsh_client:
+    dependency: "direct main"
+    description:
+      path: "../../packages/client_dart"
+      relative: true
+    source: path
+    version: "0.1.0"
+  dsh_manager:
+    dependency: "direct main"
+    description:
+      path: "../../packages/dsh_manager"
+      relative: true
+    source: path
+    version: "0.1.0"
   fake_async:
     dependency: transitive
     description:

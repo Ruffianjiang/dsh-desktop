@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/chat/chat_page.dart';
 import '../features/engine/engine_page.dart';
+import '../features/instances/instance_detail_page.dart';
 import '../features/instances/instances_page.dart';
 import '../features/settings/settings_page.dart';
 import 'app_shell.dart';
@@ -19,7 +20,16 @@ GoRouter buildRouter() {
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
-                path: '/instances', builder: (_, _) => const InstancesPage()),
+              path: '/instances',
+              builder: (_, _) => const InstancesPage(),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  builder: (_, state) =>
+                      InstanceDetailPage(id: state.pathParameters['id']!),
+                ),
+              ],
+            ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/chat', builder: (_, _) => const ChatPage()),
