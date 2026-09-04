@@ -32,7 +32,9 @@ class DshClient {
   void _setState(ConnState next) {
     if (next != _state) {
       _state = next;
-      _stateController.add(next);
+      // close() 与 openStream 的 finally 存在交错（重连/关闭场景），
+      // 控制器已关闭时静默忽略，避免 Bad state 崩溃（M3 实测）。
+      if (!_stateController.isClosed) _stateController.add(next);
     }
   }
 

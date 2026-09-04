@@ -38,4 +38,11 @@ class SessionApi {
   /// payload: { sessionId } → 取消当前 run（源码会话方法，契约 v0.1 未实测）
   Future<Map<String, dynamic>?> cancel(String sessionId) =>
       _client.call('session.cancel', {'sessionId': sessionId});
+
+  /// 审批 / ask-user 回写（契约 v0.2：method 名与 payload 以 T2 抓包定型）。
+  Future<Map<String, dynamic>?> respond(Map<String, dynamic> payload) =>
+      _client.call('respond', payload);
+
+  /// 模型只读列表（settings 页；method 名以 T2 抓包定型）。
+  Future<Map<String, dynamic>?> models() => _client.call('llm.models', {});
 }
