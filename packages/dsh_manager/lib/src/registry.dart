@@ -34,4 +34,33 @@ class RegistryStore {
       'instances': instances.map((c) => c.toJson()).toList(),
     }));
   }
+
+  /// 按 id 查找（F2 Gate-B §7.1）。
+  InstanceConfig? get(String id) {
+    for (final c in load()) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// 按 id 替换或追加，立即落盘。
+  void upsert(InstanceConfig cfg) {
+    final items = load();
+    final idx = items.indexWhere((c) => c.id == cfg.id);
+    if (idx >= 0) {
+      items[idx] = cfg;
+    } else {
+      items.add(cfg);
+    }
+    save(items);
+  }
+
+  /// 按 id 删除（不存在为 no-op），立即落盘。
+  void remove(String id) {
+    final items = load();
+    final idx = items.indexWhere((c) => c.id == id);
+    if (idx < 0) return;
+    items.removeAt(idx);
+    save(items);
+  }
 }

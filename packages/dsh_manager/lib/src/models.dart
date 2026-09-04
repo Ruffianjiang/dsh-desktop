@@ -85,4 +85,10 @@ class InstanceState {
   /// 实际监听端口（config.port==0 时由分配器填入，用于多实例 / OS 分配场景）。
   int? port;
   DateTime? startedAt;
+
+  /// 最近一次心跳时间（HealthProbe 更新；F2 Gate-B §4.7）。
+  DateTime? lastHeartbeat;
+
+  /// 守护连续失败次数（0 = 非守护中；F2 Gate-B §4.1，BQ7 不新增 restarting 态）。
+  int guardianAttempts = 0;
 }
