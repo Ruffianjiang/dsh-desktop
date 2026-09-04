@@ -1,0 +1,67 @@
+# dsh-desktop → 放到 .github/dependabot.yml
+# 目标：覆盖 9 条 open 告警中全部「有修复版本」的项，并用 groups 把同生态更新合并为单个 PR。
+#
+# 告警分布（2026-09-04 实测：9 open / 47 fixed）
+#   npm   /                          package.json + package-lock.json   → #48  extract-zip（high，无可用修复版本）
+#   npm   /tauri-skeleton            package.json + pnpm-lock.yaml      → #49–55 vite/esbuild（7 条，均有修复版本）
+#   cargo /tauri-skeleton/src-tauri  Cargo.toml + Cargo.lock            → #56  glib（medium，修复版本 0.20.0）
+#
+# 注意：Dart/Flutter 子包（apps/probe_cli、packages/client_dart、packages/dsh_manager）
+# 目前只存在于尚未合入 main 的 feat/v0.4-manager 分支，main 上没有对应 pubspec.yaml，
+# 故此处不纳管（directory 不存在会导致该条目报错）。待 v0.4 合入 main 后，再启用文件末尾的 pub 段。
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"                          # 根 package.json + package-lock.json（Electron 壳）
+    schedule:
+      interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "npm"
+    directory: "/tauri-skeleton"            # 承载 #49–55（vite/esbuild）7 条告警
+    schedule:
+      interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "cargo"
+    directory: "/tauri-skeleton/src-tauri"  # 承载 #56（glib）
+    schedule:
+      interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+# —— v0.4（feat/v0.4-manager）合入 main 后，取消下面注释启用 pub 纳管 ——
+#  - package-ecosystem: "pub"
+#    directory: "/apps/probe_cli"
+#    schedule:
+#      interval: "weekly"
+#    groups:
+#      all-dependencies:
+#        patterns: ["*"]
+#    open-pull-requests-limit: 10
+#
+#  - package-ecosystem: "pub"
+#    directory: "/packages/client_dart"
+#    schedule:
+#      interval: "weekly"
+#    groups:
+#      all-dependencies:
+#        patterns: ["*"]
+#    open-pull-requests-limit: 10
+#
+#  - package-ecosystem: "pub"
+#    directory: "/packages/dsh_manager"
+#    schedule:
+#      interval: "weekly"
+#    groups:
+#      all-dependencies:
+#        patterns: ["*"]
+#    open-pull-requests-limit: 10
