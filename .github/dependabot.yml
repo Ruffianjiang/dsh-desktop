@@ -1,0 +1,42 @@
+# dsh-desktop → 放到 .github/dependabot.yml
+# npm（Electron 壳，9 个告警所在的 package-lock.json）+ 3 个 Dart/Flutter 子包各一组。
+# groups 把同生态依赖更新合并为单个 PR；patch/minor 由 dependabot-auto-merge.yml 自动合并，major 留人工 review。
+# 注：pub 子包目录（apps/probe_cli、packages/client_dart、packages/dsh_manager）在 v0.4 合入 main 后才会被扫描，
+#      合并前 Dependabot 会跳过这些不存在的 manifest 目录，不影响 npm 监控。
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"                       # 根 package.json + package-lock.json（dsh 引擎 / Electron 壳依赖）
+    schedule:
+      interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "pub"
+    directory: "/apps/probe_cli"
+    schedule:
+      interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "pub"
+    directory: "/packages/client_dart"
+    schedule:
+      interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "pub"
+    directory: "/packages/dsh_manager"
+    schedule:
+      interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
