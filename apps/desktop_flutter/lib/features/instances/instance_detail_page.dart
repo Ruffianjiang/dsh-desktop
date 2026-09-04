@@ -85,6 +85,12 @@ class _InstanceDetailPageState extends ConsumerState<InstanceDetailPage> {
                     child: const Text('重启'),
                   ),
                   OutlinedButton(
+                    onPressed: st?.status == InstanceStatus.running
+                        ? () => _setActiveEndpoint(cfg, st)
+                        : null,
+                    child: const Text('设为活动端点'),
+                  ),
+                  OutlinedButton(
                     onPressed: () => _export(mgr),
                     child: const Text('导出日志'),
                   ),
@@ -155,6 +161,14 @@ class _InstanceDetailPageState extends ConsumerState<InstanceDetailPage> {
             .showSnackBar(SnackBar(content: Text('操作失败：$e')));
       }
     }
+  }
+
+  /// 设为活动端点（M3-T5）：running 实例 → 对话页的连接目标。
+  void _setActiveEndpoint(InstanceConfig cfg, InstanceState? st) {
+    final url = 'http://${cfg.host}:${st!.port ?? cfg.port}';
+    ref.read(activeEndpointProvider.notifier).select(url);
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('活动端点已设为 $url（对话页将自动连接）')));
   }
 
   Future<void> _export(InstanceManager mgr) async {

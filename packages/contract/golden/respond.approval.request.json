@@ -1,0 +1,12 @@
+{
+  "type": "client-response",
+  "rpcId": "<approval/requested 信封 rpcId>",
+  "result": {
+    "ok": true,
+    "value": {
+      "sessionId": "<会话 id>",
+      "approvalId": "<approval/requested 的 approvalId>",
+      "outcome": "allowed-once"
+    }
+  }
+}

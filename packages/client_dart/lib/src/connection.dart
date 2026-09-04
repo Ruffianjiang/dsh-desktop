@@ -168,24 +168,17 @@ class DshConnection {
     final type = payload['type']?.toString();
 
     if (type == 'session/subscribed') {
-      // 订阅就绪：进入 streaming；记录 lastSeq 基线（缺口补拉在 _applyGap）。
+      // 订阅就绪：进入 streaming；**每会话一帧** {sessionId, lastSeq}
+      //（dsh-client-connection events.schema 实证，非 items 列表）。
       _backoffStep = 0;
       _setPhase(ConnPhase.streaming);
       _forward(frame);
-      final items = payload['items'];
-      if (items is List) {
-        for (final item in items) {
-          if (item is Map) {
-            final sid = item['sessionId']?.toString();
-            final seq = (item['lastSeq'] as num?)?.toInt();
-            if (sid != null && seq != null) {
-              _lastSeq.update(sid, (v) => v < seq ? seq : v,
-                  ifAbsent: () => seq);
-            }
-          }
-        }
+      final sid = payload['sessionId']?.toString();
+      final serverSeq = (payload['lastSeq'] as num?)?.toInt();
+      if (sid != null && serverSeq != null) {
+        _lastSeq.update(sid, (v) => v < serverSeq ? serverSeq : v,
+            ifAbsent: () => serverSeq);
       }
-      unawaited(_applyGaps());
       return;
     }
 
@@ -210,19 +203,6 @@ class DshConnection {
 
   void _forward(ServerRequestFrame frame) {
     if (!_events.isClosed) _events.add(frame);
-  }
-
-  /// 订阅基线与本地游标比对：本地超前（重连后服务端从新会话视角推送）则
-  /// 拉取 history 补齐缺口；本地落后则等待直播帧即可。
-  Future<void> _applyGaps() async {
-    final api = _sessionApi;
-    if (api == null) return;
-    for (final entry in _lastSeq.entries) {
-      // 基线校验占位：契约 v0.2 抓包确认 subscribed.lastSeq 语义后细化。
-      // 当前策略：以本地游标去重为主，缺口补拉由调用方按需触发
-      // session.history（T3 ChatAssembler 提供按 seq 合并）。
-      assert(entry.value >= 0);
-    }
   }
 
   void _scheduleReconnect() {

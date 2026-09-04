@@ -39,10 +39,11 @@ class SessionApi {
   Future<Map<String, dynamic>?> cancel(String sessionId) =>
       _client.call('session.cancel', {'sessionId': sessionId});
 
-  /// 审批 / ask-user 回写（契约 v0.2：method 名与 payload 以 T2 抓包定型）。
-  Future<Map<String, dynamic>?> respond(Map<String, dynamic> payload) =>
-      _client.call('respond', payload);
+  /// 模型只读列表（per-session：`session.models`，契约 v0.2 schema 实证）。
+  Future<Map<String, dynamic>?> models(String sessionId) =>
+      _client.call('session.models', {'sessionId': sessionId});
 
-  /// 模型只读列表（settings 页；method 名以 T2 抓包定型）。
-  Future<Map<String, dynamic>?> models() => _client.call('llm.models', {});
+  /// 审批/ask-user 回写请用 [DshClient.respondClientResponse]
+  /// （/api/respond 为 client-response 信封经 pending 表路由，
+  /// 不走 client-request 通用 call——见 rpc_client.dart）。
 }

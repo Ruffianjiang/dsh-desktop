@@ -160,6 +160,34 @@ class DshClient {
     _http.close(force: true);
     _stateController.close();
   }
+
+  /// 审批 / ask-user 回写：`POST /api/respond`。
+  ///
+  /// body 为 **client-response 信封**（`{type, rpcId, result:{ok,value}}`），
+  /// 服务端经 pending 表按 rpcId 路由后对 value 做二次解析
+  /// （dsh-client-connection client.js:5461 实证）。返回 `{accepted, reason?}`。
+  Future<Map<String, dynamic>?> respondClientResponse({
+    required String rpcId,
+    required Map<String, dynamic> value,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final message = <String, dynamic>{
+      'type': 'client-response',
+      'rpcId': rpcId,
+      'result': {'ok': true, 'value': value},
+    };
+    final request = await _http.postUrl(_uri('/api/respond'));
+    request.headers.contentType = ContentType.json;
+    request.write(jsonEncode(message));
+    final response = await request.close().timeout(timeout);
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException('respond failed: HTTP ${response.statusCode}',
+          uri: _uri('/api/respond'));
+    }
+    final decoded = jsonDecode(body);
+    return decoded is Map ? decoded.cast<String, dynamic>() : null;
+  }
 }
 
 /// RPC 业务错误（服务器返回 ok:false）。

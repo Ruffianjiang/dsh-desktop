@@ -12,9 +12,9 @@ void main() {
   final raw =
       jsonDecode(goldenFile.readAsStringSync()) as Map<String, dynamic>;
   final value = (raw['result'] as Map)['value'] as Map<String, dynamic>;
+  // 直接使用 history 条目原始形态 {event, view?}（applyAll 兼容两者）
   final history = (value['events'] as List)
-      .map<Map<String, dynamic>>(
-          (e) => (e['event'] as Map).cast<String, dynamic>())
+      .map<Map<String, dynamic>>((e) => (e as Map).cast<String, dynamic>())
       .toList();
 
   test('golden 装载：user 消息文本正确', () {
@@ -46,7 +46,8 @@ void main() {
   test('游标：lastSeq == 事件最大 seq', () {
     final state = ChatAssembler().applyAll(history);
     final maxSeq = history
-        .map((e) => (e['seq'] as num?)?.toInt() ?? 0)
+        .map((e) =>
+            ((e['event'] as Map)['seq'] as num?)?.toInt() ?? 0)
         .reduce((a, b) => a > b ? a : b);
     expect(state.lastSeq, maxSeq);
   });
@@ -55,8 +56,10 @@ void main() {
     final a = ChatAssembler().applyAll(history);
     final b = ChatState();
     final asm = ChatAssembler();
-    for (final e in history) {
-      asm.applyEvent(b, e);
+    for (final entry in history) {
+      final event = (entry['event'] as Map).cast<String, dynamic>();
+      final view = (entry['view'] as Map?)?.cast<String, dynamic>();
+      asm.applyEvent(b, event, view: view);
     }
     expect(b.messages.length, a.messages.length);
     for (var i = 0; i < a.messages.length; i++) {

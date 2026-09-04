@@ -9,7 +9,7 @@ enum ChatRole { user, assistant }
 
 enum MessageStatus { streaming, done }
 
-enum ChatBlockType { text, code, unknown }
+enum ChatBlockType { text, code, toolCall, unknown }
 
 /// 消息内容块（与 assistant/chunk 的 index 对应）。
 class ChatBlock {
@@ -62,17 +62,24 @@ class ChatState {
 
 /// 聚合器：无状态入口 + 可复用的增量应用。
 class ChatAssembler {
-  /// history 装载：按序应用全部事件。
-  ChatState applyAll(List<Map<String, dynamic>> events) {
+  /// history 装载：按序应用全部条目。
+  /// 条目为 `session.history` 的 `{event, view?}` 原始形态（也兼容裸 event）。
+  ChatState applyAll(List<Map<String, dynamic>> entries) {
     final state = ChatState();
-    for (final e in events) {
-      applyEvent(state, e);
+    for (final e in entries) {
+      final event = (e['event'] as Map?)?.cast<String, dynamic>() ?? e;
+      final view = (e['view'] as Map?)?.cast<String, dynamic>();
+      applyEvent(state, event, view: view);
     }
     return state;
   }
 
   /// 单事件应用（history 事件与 WS `session/event` 的 `event` 同构）。
-  ChatState applyEvent(ChatState state, Map<String, dynamic> event) {
+  /// [view] 为 host 附带的工具轨迹视图（history 条目 `view` /
+  /// mux 帧 `view`，`{for:'call'|'result', view:{card}}`——契约 v0.2 实证）。
+  ChatState applyEvent(
+      ChatState state, Map<String, dynamic> event,
+      {Map<String, dynamic>? view}) {
     final type = _s(event, 'type');
     final seq = _i(event, 'seq');
     if (seq != null && (state.lastSeq == null || seq > state.lastSeq!)) {
@@ -91,6 +98,10 @@ class ChatAssembler {
         _applyAssistantMessage(state, data, seq);
       case 'step/end':
         _closeStep(state, _i(data, 'turn'), _i(data, 'step'));
+      case 'tool/call':
+      case 'tool/result':
+        _applyToolEvent(state, data, type == 'tool/call' ? 'call' : 'result',
+            view);
       case 'turn/start':
       case 'turn/end':
       case 'session/title':
@@ -106,6 +117,30 @@ class ChatAssembler {
         break; // 未知类型静默跳过（dsh rc 版可能新增）
     }
     return state;
+  }
+
+  /// 工具轨迹：host 附带 `view.card` 字符串为展示主体（M3 Gate-B §4.5）。
+  void _applyToolEvent(ChatState state, Map<String, dynamic>? data,
+      String kind, Map<String, dynamic>? view) {
+    if (data == null) return;
+    final turn = _i(data, 'turn');
+    final step = _i(data, 'step');
+    var msg = state._open['$turn/$step'];
+    // 工具事件可能先于任何 step/start（或 step 已收尾）：落到最近一条 assistant
+    if (msg == null && state.messages.isNotEmpty) {
+      final last = state.messages.last;
+      if (last.role == ChatRole.assistant) msg = last;
+    }
+    if (msg == null) return;
+    final card = ((view?['view'] as Map?)?['card'] ?? '').toString();
+    final label = kind == 'call' ? '调用' : '结果';
+    msg.blocks.add(ChatBlock(
+      // 负索引：与 chunk 的非负 index 空间隔离，防 text-delta 查块串扰
+      index: -(msg.blocks.length + 1),
+      type: ChatBlockType.toolCall,
+      text: card.isEmpty ? '［工具$label］' : '[$label] $card',
+      closed: true,
+    ));
   }
 
   void _applyUserMessage(

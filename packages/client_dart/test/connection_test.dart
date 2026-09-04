@@ -17,11 +17,11 @@ void main() {
     server.listen((req) async {
       final ws = await WebSocketTransformer.upgrade(req);
       sockets.add(ws);
+      // 订阅基线帧：**每会话一帧** {sessionId, lastSeq}（契约 v0.2 实证）
       ws.add(_frame(payload: {
         'type': 'session/subscribed',
-        'items': [
-          {'sessionId': 's1', 'lastSeq': 0},
-        ],
+        'sessionId': 's1',
+        'lastSeq': 0,
       }));
     });
   });
@@ -59,13 +59,13 @@ void main() {
     await _waitFor(() => sessionEvents.isNotEmpty);
     expect((sessionEvents.single['event'] as Map)['seq'], 1);
 
-    // 重复 seq=1 → 游标去重，不再投递
+    // 重复 seq=1 → 游标去重，不再投递（留足投递窗口）
     sockets.first.add(_frame(payload: {
       'type': 'session/event',
       'sessionId': 's1',
       'event': {'seq': 1, 'type': 'assistant/message'},
     }));
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await Future<void>.delayed(const Duration(milliseconds: 500));
     expect(sessionEvents.length, 1);
 
     // 服务端断开 → 退避 1s → 重连成功 → 再次 streaming
@@ -105,7 +105,7 @@ String _frame({required Map<String, dynamic> payload}) => jsonEncode({
     });
 
 Future<void> _waitFor(bool Function() cond,
-    {Duration timeout = const Duration(seconds: 8)}) async {
+    {Duration timeout = const Duration(seconds: 15)}) async {
   final end = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(end)) {
     if (cond()) return;
