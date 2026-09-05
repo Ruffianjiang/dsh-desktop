@@ -6,7 +6,9 @@ import 'package:dsh_desktop/app.dart';
 
 void main() {
   testWidgets('T1/T4 壳层冒烟：NavigationRail 四页可渲染', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: DshApp()));
+    // enableSystemTray:false —— 测试环境无 window/tray 插件
+    await tester.pumpWidget(
+        const ProviderScope(child: DshApp(enableSystemTray: false)));
     // 异步 provider（NodeEnv.probe 等真实探测）在测试环境后台进行，
     // 不使用 pumpAndSettle（进度条动画永不 settle）。
     await tester.pump();

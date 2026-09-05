@@ -5,6 +5,8 @@ import 'package:dsh_client/dsh_client.dart';
 import 'package:dsh_manager/dsh_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'settings_store.dart';
+
 /// 全局 providers（M3 Gate-B §5.2）。
 ///
 /// 依赖方向：UI → providers → L2(dsh_manager)/L3(dsh_client)；
@@ -155,3 +157,34 @@ final pendingApprovalsProvider =
         PendingApprovals.new);
 // 审批回写在对话页执行（WidgetRef 读取 connectionProvider +
 // client.respondClientResponse），受理失败的项由页面 dismiss 出队。
+
+// ---------------------------------------------------------------------------
+// 设置（M3-T8）：持久化 + 模型只读
+// ---------------------------------------------------------------------------
+
+/// 设置持久化（JSON：~/.dsh-desktop/settings.json）。
+final settingsStoreProvider = Provider<SettingsStore>((ref) => SettingsStore());
+
+/// 应用设置（设置页）。
+class AppSettingsController extends Notifier<AppSettings> {
+  @override
+  AppSettings build() => ref.read(settingsStoreProvider).load();
+
+  /// 更新并落盘。
+  void update(AppSettings next) {
+    ref.read(settingsStoreProvider).save(next);
+    state = next;
+  }
+}
+
+final appSettingsProvider =
+    NotifierProvider<AppSettingsController, AppSettings>(
+        AppSettingsController.new);
+
+/// 模型只读（per-session：`session.models`，契约 v0.2 实证）。
+final sessionModelsProvider = FutureProvider.family<Map<String, dynamic>?,
+    String>((ref, sessionId) async {
+  final conn = ref.watch(connectionProvider);
+  if (conn == null) return null;
+  return conn.sessionApi.models(sessionId);
+});
