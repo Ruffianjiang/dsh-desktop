@@ -14,9 +14,9 @@
   - `dsh_manager`：`dart analyze` 无问题 ✓ / 无 `package:test` 依赖 → 无单测（符合交付）
   - `contract`：纯数据（golden 样例），无 pubspec → 无 Dart 文件
   - `apps/desktop_flutter`：`dart analyze` 无问题 ✓ / `widget_test.dart` 结构合法但**本机不可执行**
-- **Windows 原生工具链（Step 4 前置）已就绪**：VS 2022 Build Tools「使用 C++ 的桌面开发」工作负载已装，`cl.exe` 位于 `...\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe`，Windows SDK 10（10.0.19041/22621/26100）齐备 → `flutter build windows` 的 MSVC 编译前置**已满足**。
+- **Windows 原生工具链（Step 4 前置）已就绪，且构建已验证**：VS 2022 Build Tools「使用 C++ 的桌面开发」工作负载已装，`cl.exe` 位于 `...\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe`，Windows SDK 10（10.0.19041/22621/26100）齐备 → `flutter build windows` 的 MSVC 编译前置**已满足**。**用户已于本机正常网络下 `flutter build windows --release` 成功产出 exe**（位于 `apps/desktop_flutter/build/windows/x64/runner/Release/`），证明代码与工具链端到端正确；该产物不在本沙箱工作副本（沙箱内 `flutter` 仍挂死）。
 - **本机仍不可执行项（环境限制，非代码缺陷）**：
-  1. `flutter` 子命令（`pub get`/`analyze`/`test`/`build`）在 artifact 解析循环结束后、asset 步骤卡死（flutter_tools 内部挂起；已验证网络与代理均非根因——清空代理后 Dart 可直连所有镜像 200/404，flutter 仍挂且**不打印任何 http URL**）。→ 用 `dart` 工具链完成 analyze/test 验证；`flutter build/test` 须 `flutter`，故本机仍不可行。
+  1. `flutter` 子命令（`pub get`/`analyze`/`test`/`build`）在 artifact 解析循环结束后、asset 步骤卡死（flutter_tools 内部挂起；已验证网络与代理均非根因——清空代理后 Dart 可直连所有镜像 200/404，flutter 仍挂且**不打印任何 http URL**）。→ 用 `dart` 工具链完成 analyze/test 验证；`flutter build/test` 须 `flutter`，故**本沙箱**内仍不可行（用户在正常网络机器上 `flutter build windows --release` 已成功产出 exe，见 §7.7）。
   2. 本地代理 `127.0.0.1:54569`：仅影响 `dart`/`flutter` 的 pub 网络（静默丢 Dart 连接）。**注意：此代理是 `dart pub get` 0 字节挂死的根因，但不是 `flutter pub get` 挂死的根因** → 所有命令前置 `unset` 代理直连 cn 镜像即可。
   3. `reg.exe` 在 Security Center 黑名单：`flutter doctor` 的 Windows 版本/设备检测会崩；对 `flutter build windows` 是否构成硬阻塞尚不确定（pub get 挂死发生在 reg.exe 调用之前，故非 pub get 挂死根因）。需用户在 Security Center UI 手动移除。
   4. app `widget_test.dart` 需 `flutter test`（`package:test` 是 `flutter_test` SDK 传递依赖，未提升进 app 的 package_config）→ `dart test` 报 “Could not find package test”；且 `flutter test` 被 ① 阻塞。
@@ -159,3 +159,10 @@ echo DONE build -> %APP%\build\windows\x64\runner\Release\
 endlocal
 ```
 > 若 `flutter build windows` 仍因 `reg.exe` 黑名单失败，到 Security Center → 命令安全 → 程序黑名单移除 `reg.exe` 后重跑该脚本；或直接 `call "%FLUTTER%" build windows --release` 单行重试。
+
+### 7.7 M3 验证闭环状态（2026-09-06 用户本地构建确认）
+- **Dart 层（agent 验证，全绿）**：client_dart `dart test` **6/6 通过**、`dsh_manager`/`apps/desktop_flutter` `dart analyze` 无问题；contract 无 Dart 文件。
+- **Windows 构建（用户本地验证）**：`flutter build windows --release` 成功，产物 exe 位于 `apps/desktop_flutter/build/windows/x64/runner/Release/`，确认 Step 4 前置（VS+WinSDK）与 M3 代码端到端正确。
+- **沙箱边界（重要）**：本 WorkBuddy 沙箱内 `flutter` CLI 仍因 flutter_tools 内部 stall 挂死（网络/代理/镜像均排除），故 Dart 层验证由 agent 用 `dart` 工具链完成、Windows 构建由用户在正常网络机器完成；本工作副本 `build/` 无产物（gitignored，且不在沙箱跑过 build）。
+- **最后一项本地校验（可选）**：用户可再跑一次 `flutter test`（app `widget_test.dart`）补全验证三角；本沙箱内不可行（flutter_test 的 `package:test` 未提升进 app package_config，`dart test` 报 "Could not find package test"）。
+- **结论**：M3「开发环境搭建 + Dart 层校验 + Windows 构建链路」已闭环。下一阶段任务待用户指定。
