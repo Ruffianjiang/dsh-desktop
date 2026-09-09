@@ -16,7 +16,8 @@ class InstanceManager {
   InstanceManager({required this.env, RegistryStore? registry})
       : registry = registry ?? RegistryStore();
 
-  final NodeEnv env;
+  /// 运行环境（实例启动由此取 dsh 入口；可用 [updateEnv] 热替换）。
+  NodeEnv env;
   final RegistryStore registry;
 
   final Map<String, InstanceSupervisor> _byId = {};
@@ -34,6 +35,19 @@ class InstanceManager {
   InstanceState? stateOf(String id) => _byId[id]?.state;
 
   LogTail? logTailOf(String id) => _byId[id]?.logTail;
+
+  /// 热替换运行环境（T9 修正 F1-3，Gate-A 20260909）：托管引擎安装/升级后调用。
+  /// 新实例（含当前未在跑的存量实例，其 supervisor 重建）立即生效；
+  /// 在跑实例不受影响，需删除重建（或重启应用）才切换引擎。
+  void updateEnv(NodeEnv next) {
+    env = next;
+    final stale = _byId.entries.where((e) => !e.value.isRunning).toList();
+    for (final e in stale) {
+      _subs.remove(e.key)?.cancel();
+      unawaited(e.value.dispose()); // 无进程在跑：仅释放流资源
+      _byId.remove(e.key);
+    }
+  }
 
   InstanceSupervisor _supervisorFor(InstanceConfig cfg) {
     final existing = _byId[cfg.id];
