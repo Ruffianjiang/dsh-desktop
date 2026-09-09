@@ -9,7 +9,7 @@ enum ChatRole { user, assistant }
 
 enum MessageStatus { streaming, done }
 
-enum ChatBlockType { text, code, toolCall, unknown }
+enum ChatBlockType { text, code, reasoning, toolCall, unknown }
 
 /// 消息内容块（与 assistant/chunk 的 index 对应）。
 class ChatBlock {
@@ -18,12 +18,22 @@ class ChatBlock {
     this.type = ChatBlockType.text,
     this.text = '',
     this.closed = false,
+    this.toolCallId,
+    this.toolKind,
+    this.toolDetail,
   });
 
   final int index;
   final ChatBlockType type;
   String text;
   bool closed;
+
+  /// 工具块（type == toolCall）扩展字段（T9 修正 F3-5，实机帧结构实证）：
+  /// [toolCallId] 关联 call/result；[toolKind] 类别（search/read/edit/…）；
+  /// [toolDetail] 可展开正文（调用参数 / 结果文本）。[text] 为标题行。
+  String? toolCallId;
+  String? toolKind;
+  String? toolDetail;
 }
 
 /// UI 消息模型。
@@ -45,6 +55,11 @@ class ChatMessage {
   final int? step;
   final int? seq;
   Map<String, dynamic>? usage;
+
+  /// 计时（F3-7 token 速率）：startedAt=step/start（权威替换时沿用）；
+  /// finishedAt=finish chunk / 权威替换 / step/end。
+  DateTime? startedAt;
+  DateTime? finishedAt;
 
   /// 全部文本块拼接（渲染层按 block 细分，此处用于断言/降级展示）。
   String get plainText =>
@@ -119,28 +134,113 @@ class ChatAssembler {
     return state;
   }
 
-  /// 工具轨迹：host 附带 `view.card` 字符串为展示主体（M3 Gate-B §4.5）。
+  /// 工具轨迹（T9 修正 F3-5；帧结构 probe 实证 2026-09-09）：
+  /// call 帧 `data={callId,name,arguments}` + `view.view={card,title,kind,rawInput}`；
+  /// result 帧 `data.message.source.callId` + `data.message.content[].content[].text`，
+  /// `view.view={card,shape,paths[],truncated,total}`。
+  /// 聚合规则：按 [ChatBlock.toolCallId] 把 result 归并进 call 块——
+  /// text=标题行（view.title 优先），toolDetail=可展开正文。
   void _applyToolEvent(ChatState state, Map<String, dynamic>? data,
       String kind, Map<String, dynamic>? view) {
     if (data == null) return;
     final turn = _i(data, 'turn');
     final step = _i(data, 'step');
     var msg = state._open['$turn/$step'];
-    // 工具事件可能先于任何 step/start（或 step 已收尾）：落到最近一条 assistant
-    if (msg == null && state.messages.isNotEmpty) {
-      final last = state.messages.last;
-      if (last.role == ChatRole.assistant) msg = last;
+    // 工具事件可能先于任何 step/start（或 step 已收尾）：落到**最近一条**
+    // assistant（seq74/75 的 tool 事件晚于 assistant/message 的权威替换，
+    // 此时 open 已移除、messages 尾部可能是 user——必须反向搜索）。
+    if (msg == null) {
+      for (final candidate in state.messages.reversed) {
+        if (candidate.role == ChatRole.assistant) {
+          msg = candidate;
+          break;
+        }
+      }
     }
     if (msg == null) return;
-    final card = ((view?['view'] as Map?)?['card'] ?? '').toString();
-    final label = kind == 'call' ? '调用' : '结果';
-    msg.blocks.add(ChatBlock(
-      // 负索引：与 chunk 的非负 index 空间隔离，防 text-delta 查块串扰
-      index: -(msg.blocks.length + 1),
-      type: ChatBlockType.toolCall,
-      text: card.isEmpty ? '［工具$label］' : '[$label] $card',
-      closed: true,
-    ));
+    final v = (view?['view'] as Map?)?.cast<String, dynamic>();
+
+    String? callId;
+    String title;
+    String? toolKind;
+    String? detail;
+    if (kind == 'call') {
+      callId = _s(data, 'callId');
+      final t1 = _s(v, 'title');
+      final t2 = _s(data, 'name');
+      title = (t1 != null && t1.isNotEmpty) ? t1 : (t2 ?? '工具调用');
+      toolKind = _s(v, 'kind');
+      detail = _s(v, 'rawInput') ?? _s(data, 'arguments');
+    } else {
+      final message = (data['message'] as Map?)?.cast<String, dynamic>();
+      final source = (message?['source'] as Map?)?.cast<String, dynamic>();
+      callId = _s(source, 'callId');
+      toolKind = _s(v, 'kind');
+      title = '结果';
+      detail = _resultText(message, v);
+    }
+
+    // 按 callId 归并：result 并入已存在的 call 块
+    ChatBlock? block;
+    for (final b in msg.blocks) {
+      if (b.toolCallId != null && b.toolCallId == callId) {
+        block = b;
+        break;
+      }
+    }
+    final detailText = (detail == null || detail.isEmpty) ? null : detail;
+    if (block == null) {
+      msg.blocks.add(ChatBlock(
+        // 负索引：与 chunk 的非负 index 空间隔离，防 text-delta 查块串扰
+        index: -(msg.blocks.length + 1),
+        type: ChatBlockType.toolCall,
+        text: title,
+        closed: true,
+        toolCallId: callId,
+        toolKind: toolKind,
+        toolDetail: detailText,
+      ));
+    } else if (kind == 'result') {
+      if (detailText != null) block.toolDetail = detailText;
+    } else {
+      block.text = title;
+      block.toolKind = toolKind ?? block.toolKind;
+      block.toolDetail ??= detailText;
+    }
+  }
+
+  /// result 正文：优先 `message.content[].content[].text`；fallback
+  /// `view.shape == 'paths'`（路径清单）。超长截断（>12000 字符）。
+  String? _resultText(Map<String, dynamic>? message, Map<String, dynamic>? v) {
+    final buf = StringBuffer();
+    final content = message?['content'];
+    if (content is List) {
+      for (final c in content) {
+        if (c is! Map) continue;
+        final inner = c['content'];
+        if (inner is List) {
+          for (final t in inner) {
+            if (t is Map && t['type'] == 'text') {
+              buf.writeln(t['text']?.toString() ?? '');
+            }
+          }
+        }
+      }
+    }
+    var text = buf.toString().trim();
+    if (text.isEmpty && v != null && v['shape'] == 'paths') {
+      final paths = v['paths'];
+      if (paths is List) {
+        text = paths.take(200).map((p) => p.toString()).join('\n');
+        if (v['truncated'] == true) {
+          text += '\n…（共 ${v['total'] ?? paths.length} 条，已截断）';
+        }
+      }
+    }
+    if (text.length > 12000) {
+      text = '${text.substring(0, 12000)}\n…（内容过长已截断）';
+    }
+    return text.isEmpty ? null : text;
   }
 
   void _applyUserMessage(
@@ -178,7 +278,7 @@ class ChatAssembler {
       turn: turn,
       step: step,
       seq: seq,
-    );
+    )..startedAt = DateTime.now();
     state._open[key] = m;
     state.messages.add(m);
   }
@@ -198,16 +298,35 @@ class ChatAssembler {
         final bt = _s(chunk, 'blockType');
         msg.blocks.add(ChatBlock(
           index: index,
-          type: bt == 'text'
-              ? ChatBlockType.text
-              : bt == 'code'
-                  ? ChatBlockType.code
-                  : ChatBlockType.unknown,
+          type: switch (bt) {
+            'text' => ChatBlockType.text,
+            'code' => ChatBlockType.code,
+            'reasoning' => ChatBlockType.reasoning,
+            'tool-call' => ChatBlockType.toolCall,
+            _ => ChatBlockType.unknown,
+          },
         ));
-      case 'text-delta':
+      case 'text-delta' || 'reasoning-delta':
+        // 正文与思考同为增量文本（reasoning-delta 实机帧结构 2026-09-09）
         final index = _i(chunk, 'index') ?? 0;
         final b = _block(msg, index);
         b.text += _s(chunk, 'text') ?? '';
+      case 'tool-call-delta':
+        // 流式工具调用：{index,id,name,argumentsDelta}
+        final index = _i(chunk, 'index') ?? 0;
+        final b = _block(msg, index);
+        final id = _s(chunk, 'id');
+        if (id != null && b.toolCallId == null) b.toolCallId = id;
+        final name = _s(chunk, 'name');
+        if (name != null &&
+            name.isNotEmpty &&
+            (b.text.isEmpty || b.text == '工具调用')) {
+          b.text = name;
+        }
+        final delta = _s(chunk, 'argumentsDelta');
+        if (delta != null && delta.isNotEmpty) {
+          b.toolDetail = (b.toolDetail ?? '') + delta;
+        }
       case 'block-end':
         final index = _i(chunk, 'index') ?? 0;
         final b = _block(msg, index);
@@ -218,6 +337,7 @@ class ChatAssembler {
         msg.usage = chunk;
       case 'finish':
         msg.status = MessageStatus.done;
+        msg.finishedAt ??= DateTime.now();
     }
   }
 
@@ -244,6 +364,14 @@ class ChatAssembler {
         step: step,
         seq: seq,
       )..usage = open.usage;
+      // F3-7：计时沿用 open（startedAt=step/start 时刻，速率分母才真实）
+      m.startedAt = open.startedAt;
+      m.finishedAt = DateTime.now();
+      // T9 修正 F3-5：权威 content 只含文本块——chunk 阶段累积的工具卡
+      // （call/result 聚合）不在其中，必须显式携带，否则最终消息丢工具轨迹。
+      for (final b in open.blocks) {
+        if (b.type == ChatBlockType.toolCall) m.blocks.add(b);
+      }
       if (idx >= 0) {
         state.messages[idx] = m;
       } else {
@@ -264,13 +392,39 @@ class ChatAssembler {
     if (content is List) {
       var i = 0;
       for (final c in content) {
-        if (c is Map) {
-          final cm = c.cast<String, dynamic>();
-          if (_s(cm, 'type') == 'text') {
+        if (c is! Map) continue;
+        final cm = c.cast<String, dynamic>();
+        final t = _s(cm, 'type');
+        if (t == 'text') {
+          m.blocks.add(ChatBlock(
+            index: i++,
+            text: _s(cm, 'text') ?? '',
+            closed: true,
+          ));
+        } else if (t == 'reasoning') {
+          // 思考过程（实机帧结构实证：content 含完整 reasoning 文本）
+          final rt = _s(cm, 'text') ?? '';
+          if (rt.isNotEmpty) {
             m.blocks.add(ChatBlock(
               index: i++,
-              text: _s(cm, 'text') ?? '',
+              type: ChatBlockType.reasoning,
+              text: rt,
               closed: true,
+            ));
+          }
+        } else if (t == 'tool-call') {
+          // 权威工具卡（与 tool/call 事件按 callId 去重；title 由 view 补充）
+          final cid = _s(cm, 'id');
+          final exists =
+              m.blocks.any((b) => b.toolCallId != null && b.toolCallId == cid);
+          if (!exists) {
+            m.blocks.add(ChatBlock(
+              index: i++,
+              type: ChatBlockType.toolCall,
+              text: _s(cm, 'name') ?? '工具调用',
+              closed: true,
+              toolCallId: cid,
+              toolDetail: _s(cm, 'arguments'),
             ));
           }
         }
@@ -281,7 +435,10 @@ class ChatAssembler {
   void _closeStep(ChatState state, int? turn, int? step) {
     if (turn == null || step == null) return;
     final m = state._open.remove('$turn/$step');
-    if (m != null) m.status = MessageStatus.done;
+    if (m != null) {
+      m.status = MessageStatus.done;
+      m.finishedAt ??= DateTime.now();
+    }
   }
 
   ChatBlock _block(ChatMessage msg, int index) {

@@ -28,7 +28,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appSettingsProvider);
-    final endpoint = ref.watch(activeEndpointProvider);
+    final target = ref.watch(activeEndpointProvider);
+    final endpointUrl = ref.watch(activeEndpointUrlProvider);
     final selected = ref.watch(selectedSessionProvider);
     final models =
         selected == null ? null : ref.watch(sessionModelsProvider(selected));
@@ -115,6 +116,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               value: s.minimizeToTray,
               onChanged: (v) => _save(s.copyWith(minimizeToTray: v)),
             ),
+            const Divider(height: 1),
+            SwitchListTile(
+              title: const Text('自动连接运行中的实例'),
+              subtitle: const Text(
+                  '进入对话页自动连接第一个运行中实例；实例重启换端口自动跟随'),
+              value: s.autoConnect,
+              onChanged: (v) => _save(s.copyWith(autoConnect: v)),
+            ),
           ]),
         ),
         const SizedBox(height: 12),
@@ -124,7 +133,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('活动端点：$endpoint'),
+                Text('活动端点：${endpointUrl ?? '（未选择）'}'
+                    '${target == null ? '' : (target.isManual ? '（手动）' : '（实例绑定）')}'),
                 const SizedBox(height: 4),
                 Text('当前会话：${selected ?? '（未选择）'}',
                     style: Theme.of(context).textTheme.bodySmall),
@@ -132,7 +142,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Row(
                   children: [
                     FilledButton.tonal(
-                      onPressed: selected == null || endpoint == null
+                      onPressed: selected == null || endpointUrl == null
                           ? null
                           : () => ref.invalidate(sessionModelsProvider(
                               selected)),

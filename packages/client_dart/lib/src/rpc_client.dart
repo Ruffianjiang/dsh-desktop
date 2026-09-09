@@ -86,8 +86,11 @@ class DshClient {
   /// 实测：该端点要求 WebSocket 升级（HTTP GET → 426 Upgrade Required），
   /// 与参考客户端「HTTP-up / WebSocket-down」一致。每帧为 text 消息：
   /// 直接 JSON 信封，或 `data:` 行 + 空行分帧的 SSE 风格块（兼容两种）。
+  ///
+  /// [onOpen]：WS 握手成功后回调（T9 实机回归 2026-09-09：mux WS 为事件驱动
+  /// 推帧——无 running 会话时服务器连上后静默，调用方不能以首帧判就绪）。
   Stream<ServerRequestFrame> openStream(String path,
-      {Duration? timeout}) {
+      {Duration? timeout, void Function()? onOpen}) {
     WebSocket? ws;
     late final StreamController<ServerRequestFrame> controller;
     controller = StreamController<ServerRequestFrame>(
@@ -100,6 +103,7 @@ class DshClient {
           final socket = await WebSocket.connect(wsUri);
           ws = socket;
           _setState(ConnState.connected);
+          onOpen?.call();
           await for (final raw in socket) {
             if (raw is! String) continue;
             for (final frame in _decodeFrames(raw)) {

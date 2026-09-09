@@ -216,7 +216,11 @@ class ChatController extends Notifier<List<ChatMessage>> {
     if (payload['sessionId']?.toString() != sessionId) return;
     final event = payload['event'];
     if (event is! Map) return;
-    ChatAssembler().applyEvent(_internal, event.cast<String, dynamic>());
+    // 工具轨迹的 view 与 event 同级挂在帧 payload 上（实机帧结构实证），
+    // 直播帧必须与 history 条目同路传入，工具卡才有 title/detail。
+    final view = (payload['view'] as Map?)?.cast<String, dynamic>();
+    ChatAssembler()
+        .applyEvent(_internal, event.cast<String, dynamic>(), view: view);
     state = List.unmodifiable(_internal.messages);
   }
 

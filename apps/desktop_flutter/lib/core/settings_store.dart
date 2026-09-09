@@ -12,6 +12,7 @@ class AppSettings {
     this.themeMode = AppThemeMode.system,
     this.autoStart = false,
     this.minimizeToTray = true,
+    this.autoConnect = true,
   });
 
   /// 新建实例的端口（0 = 自动分配）。
@@ -24,12 +25,16 @@ class AppSettings {
   final bool autoStart;
   final bool minimizeToTray;
 
+  /// 自动连接运行中的实例（F2-2，Gate-A 20260909；默认开）。
+  final bool autoConnect;
+
   AppSettings copyWith({
     int? defaultPort,
     String? dataDir,
     AppThemeMode? themeMode,
     bool? autoStart,
     bool? minimizeToTray,
+    bool? autoConnect,
   }) =>
       AppSettings(
         defaultPort: defaultPort ?? this.defaultPort,
@@ -37,6 +42,7 @@ class AppSettings {
         themeMode: themeMode ?? this.themeMode,
         autoStart: autoStart ?? this.autoStart,
         minimizeToTray: minimizeToTray ?? this.minimizeToTray,
+        autoConnect: autoConnect ?? this.autoConnect,
       );
 
   Map<String, dynamic> toJson() => {
@@ -46,6 +52,7 @@ class AppSettings {
         'themeMode': themeMode.name,
         'autoStart': autoStart,
         'minimizeToTray': minimizeToTray,
+        'autoConnect': autoConnect,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -57,6 +64,7 @@ class AppSettings {
         ),
         autoStart: j['autoStart'] == true,
         minimizeToTray: j['minimizeToTray'] != false,
+        autoConnect: j['autoConnect'] != false, // 缺省视为开（存量设置兼容）
       );
 }
 

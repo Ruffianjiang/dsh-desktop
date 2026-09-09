@@ -7,17 +7,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'settings_store.dart';
 
-/// 全局 providers（M3 Gate-B §5.2）。
+/// 全局 providers（M3 Gate-B §5.2；T9 修正 Gate-A 20260909）。
 ///
 /// 依赖方向：UI → providers → L2(dsh_manager)/L3(dsh_client)；
 /// UI ↔ dsh 唯一通道是 L3 客户端（实例面板消费 L2 事件流属进程管理域）。
 
 /// Node + dsh 环境探测（引擎页/实例页共用）。
-final nodeEnvProvider = FutureProvider<NodeEnv>((ref) => NodeEnv.probe());
+/// F1-1（Gate-A 20260909）：托管 prefix 优先于全局 PATH——安装即生效。
+final nodeEnvProvider = FutureProvider<NodeEnv>((ref) => NodeEnv.probe(
+      managedPrefix: InstallService.computeDefaultPrefix(),
+    ));
 
 /// L2 实例管理器单例（聚合全部实例事件；keepAlive 常驻）。
+///
+/// 注意：仅**创建时**读取一次引擎环境（ref.read，不随 nodeEnv 重建）——
+/// 否则安装托管引擎后重建管理器会丢失在跑实例。引擎热替换走
+/// [InstanceManager.updateEnv]（引擎页安装/升级成功后调用）。
 final instanceManagerProvider = FutureProvider<InstanceManager>((ref) async {
-  final env = await ref.watch(nodeEnvProvider.future);
+  final env = await ref.read(nodeEnvProvider.future);
   return InstanceManager(env: env);
 });
 
@@ -56,28 +63,64 @@ final versionCatalogProvider = FutureProvider<VersionCatalog>((ref) {
 });
 
 // ---------------------------------------------------------------------------
-// 连接管理（M3-T5）：活动端点 → DshConnection 生命周期
+// 连接管理（M3-T5；T9 修正 F2-1/F2-2 Gate-A 20260909）
 // ---------------------------------------------------------------------------
 
-/// 活动端点（D8 端点模型）：null = 未选择。
-/// 由实例详情「设为活动端点」或对话页手动输入设置。
-class ActiveEndpoint extends Notifier<String?> {
-  @override
-  String? build() => null;
+/// 活动端点目标：绑定实例 ID（URL 实时派生，重启换端口自动跟随）或手动 URL
+/// （高级用法）。二者互斥。
+class ActiveTarget {
+  const ActiveTarget.instance(this.instanceId)
+      : manualUrl = null,
+        isManual = false;
 
-  void select(String url) => state = url;
+  const ActiveTarget.manual(this.manualUrl)
+      : instanceId = null,
+        isManual = true;
+
+  final String? instanceId;
+  final String? manualUrl;
+  final bool isManual;
+}
+
+/// 活动端点选择（D8 端点模型）：null = 未选择。
+/// 由实例详情「设为活动端点」/ 对话页实例下拉设置；手输端点为手动模式。
+class ActiveEndpoint extends Notifier<ActiveTarget?> {
+  @override
+  ActiveTarget? build() => null;
+
+  void selectInstance(String id) => state = ActiveTarget.instance(id);
+
+  void selectManual(String url) => state = ActiveTarget.manual(url);
 
   void clear() => state = null;
 }
 
 final activeEndpointProvider =
-    NotifierProvider<ActiveEndpoint, String?>(ActiveEndpoint.new);
+    NotifierProvider<ActiveEndpoint, ActiveTarget?>(ActiveEndpoint.new);
 
-/// L3 连接（跟随活动端点重建；旧连接 dispose 时自动关闭）。
+/// 活动端点的实时 URL：实例模式随实例状态派生（监听实例事件，
+/// 重启换端口自动跟随）；手动模式原样返回。
+final activeEndpointUrlProvider = Provider<String?>((ref) {
+  final target = ref.watch(activeEndpointProvider);
+  if (target == null) return null;
+  final manual = target.manualUrl;
+  if (manual != null && manual.isNotEmpty) return manual;
+  final iid = target.instanceId;
+  if (iid == null) return null;
+  ref.watch(instanceEventsProvider); // 实例事件驱动重算
+  final mgr = ref.watch(instanceManagerProvider).value;
+  if (mgr == null) return null;
+  final cfg = mgr.registry.get(iid);
+  if (cfg == null) return null;
+  final port = mgr.stateOf(iid)?.port ?? cfg.port;
+  return 'http://${cfg.host}:$port';
+});
+
+/// L3 连接（跟随活动端点 URL 重建；旧连接 dispose 时自动关闭）。
 final connectionProvider = Provider<DshConnection?>((ref) {
-  final endpoint = ref.watch(activeEndpointProvider);
-  if (endpoint == null) return null;
-  final conn = DshConnection(endpoint: endpoint);
+  final url = ref.watch(activeEndpointUrlProvider);
+  if (url == null) return null;
+  final conn = DshConnection(endpoint: url);
   ref.onDispose(() => conn.close());
   unawaited(conn.start());
   return conn;

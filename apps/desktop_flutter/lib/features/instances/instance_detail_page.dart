@@ -138,16 +138,39 @@ class _InstanceDetailPageState extends ConsumerState<InstanceDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [StatusBadge(status: status)]),
-            const SizedBox(height: 8),
-            Text('id: ${cfg.id} · profile: ${cfg.profile}'),
-            Text('端点: ${cfg.host}:${st?.port ?? cfg.port}'
-                '${st?.pid != null ? ' · pid=${st!.pid}' : ''}'),
-            Text('启动时长: ${uptime == null ? '-' : _fmt(uptime)}'
-                ' · 最近心跳: ${st?.lastHeartbeat == null ? '-' : _time(st!.lastHeartbeat)}'
-                ' · 守护重试: ${st?.guardianAttempts ?? 0}'),
-            if (st?.lastExitCode != null) Text('上次退出码: ${st!.lastExitCode}'),
+            const SizedBox(height: 10),
+            _kv(context, '实例 ID', cfg.id),
+            _kv(context, 'Profile', cfg.profile),
+            _kv(context, '端点', '${cfg.host}:${st?.port ?? cfg.port}'),
+            _kv(context, '进程',
+                st?.pid != null ? 'pid=${st!.pid}' : '未运行'),
+            _kv(context, '启动时长', uptime == null ? '-' : _fmt(uptime)),
+            _kv(context, '最近心跳',
+                st?.lastHeartbeat == null ? '-' : _time(st!.lastHeartbeat)),
+            _kv(context, '守护重试', '${st?.guardianAttempts ?? 0}'),
+            if (st?.lastExitCode != null)
+              _kv(context, '上次退出码', '${st!.lastExitCode}'),
           ],
         ),
+      ),
+    );
+  }
+
+  /// label-value 两列对齐信息行（F3-4）。
+  Widget _kv(BuildContext context, String k, String v) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(k,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline)),
+          ),
+          Expanded(child: SelectableText(v)),
+        ],
       ),
     );
   }
@@ -163,12 +186,13 @@ class _InstanceDetailPageState extends ConsumerState<InstanceDetailPage> {
     }
   }
 
-  /// 设为活动端点（M3-T5）：running 实例 → 对话页的连接目标。
+  /// 设为活动端点（M3-T5；T9 修正 F2-1）：绑定实例 ID，端口变化自动跟随。
   void _setActiveEndpoint(InstanceConfig cfg, InstanceState? st) {
-    final url = 'http://${cfg.host}:${st!.port ?? cfg.port}';
-    ref.read(activeEndpointProvider.notifier).select(url);
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('活动端点已设为 $url（对话页将自动连接）')));
+    ref.read(activeEndpointProvider.notifier).selectInstance(cfg.id);
+    final url = 'http://${cfg.host}:${st?.port ?? cfg.port}';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('活动端点已绑定实例「${cfg.alias}」（$url）；'
+            '实例重启换端口后对话将自动跟随')));
   }
 
   Future<void> _export(InstanceManager mgr) async {

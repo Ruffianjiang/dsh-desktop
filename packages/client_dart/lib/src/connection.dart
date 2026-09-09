@@ -8,17 +8,21 @@ import 'session_api.dart';
 /// 连接阶段（Gate-B M3 §3.1：完整状态机）。
 enum ConnPhase { disconnected, connecting, connected, streaming, error }
 
-/// 端点连接（F2 Gate-B... M3 Gate-B §3.1）：REST unary + WS 下行的
-/// 完整封装——自动重连（指数退避 1s→30s）、lastSeq 续传（缺口走
-/// session.history 补拉）、空闲心跳（60s 无帧主动重连）、端点热切换。
+/// 端点连接（M3 Gate-B §3.1；T9 实机修正 F2-4 Gate-A 20260909）：REST unary +
+/// WS 下行的完整封装——自动重连（指数退避 1s→30s）、lastSeq 续传（缺口走
+/// session.history 补拉）、端点热切换。
 ///
 /// 单端点多路复用：`events.mux` 一条流承载全部会话（BQ7）。
+///
+/// **streaming 语义（实机回归修正）**：mux WS 为事件驱动推帧——无 running
+/// 会话时服务器连上后静默（session/subscribed 仅在会话创建/启动运行时下发），
+/// 故 WS 握手成功即进入 streaming（= 传输就绪），不以首帧为门槛；
+/// 空闲 watchdog 移除（静默是常态，实例存活性由 L2 HealthProbe 保障）。
 class DshConnection {
   DshConnection({
     required String endpoint,
     this.initialBackoff = const Duration(seconds: 1),
     this.maxBackoff = const Duration(seconds: 30),
-    this.idleTimeout = const Duration(seconds: 60),
   }) : _endpoint = _normalize(endpoint);
 
   static String _normalize(String url) =>
@@ -29,7 +33,6 @@ class DshConnection {
   SessionApi? _sessionApi;
   StreamSubscription<ServerRequestFrame>? _muxSub;
   Timer? _reconnectTimer;
-  Timer? _idleTimer;
   bool _running = false;
   int _backoffStep = 0;
 
@@ -37,11 +40,13 @@ class DshConnection {
   final Duration initialBackoff;
   final Duration maxBackoff;
 
-  /// 空闲心跳：超过该时长无任何帧则主动断开重连。
-  final Duration idleTimeout;
-
   /// 每会话已见最大事件 seq（续传/去重游标）。
   final Map<String, int> _lastSeq = {};
+
+  /// 最近一次连接失败原因（F2-3 错误可见化；error/重连相位可读，恢复后清空）。
+  String? _lastError;
+
+  String? get lastError => _lastError;
 
   final _phases = StreamController<ConnPhase>.broadcast();
   final _events = StreamController<ServerRequestFrame>.broadcast();
@@ -98,15 +103,11 @@ class DshConnection {
     _running = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    _idleTimer?.cancel();
-    _idleTimer = null;
     await _teardownConnection();
     _setPhase(ConnPhase.disconnected);
   }
 
   Future<void> _teardownConnection() async {
-    _idleTimer?.cancel();
-    _idleTimer = null;
     await _muxSub?.cancel();
     _muxSub = null;
     _client?.close();
@@ -121,7 +122,8 @@ class DshConnection {
     _client = client;
     _sessionApi = SessionApi(client);
 
-    final mux = client.openStream('/api/events.mux');
+    final mux =
+        client.openStream('/api/events.mux', onOpen: _onTransportOpen);
 
     _muxSub = mux.listen(
       (frame) {
@@ -129,12 +131,14 @@ class DshConnection {
       },
       onError: (Object e) {
         if (!_running) return;
+        _lastError = e.toString();
         _setPhase(ConnPhase.error);
         _scheduleReconnect();
       },
       onDone: () {
         if (!_running) return;
-        // 服务端断开（含空闲心跳触发）：退避重连。
+        // 服务端断开：退避重连。
+        _lastError = '连接被关闭（服务端断开）';
         _setPhase(_phase == ConnPhase.streaming
             ? ConnPhase.error
             : ConnPhase.disconnected);
@@ -142,24 +146,14 @@ class DshConnection {
       },
       cancelOnError: false,
     );
-
-    // openStream 的 controller 在 onListen 后才真正连 WS；此处仅登记空闲心跳。
-    _armIdleWatchdog();
   }
 
-  void _armIdleWatchdog() {
-    _idleTimer?.cancel();
-    _idleTimer = Timer.periodic(idleTimeout, (_) {
-      // 空闲 watchdog：长时间无帧则断开当前 WS，交由 onDone 走重连。
-      if (_running && _muxSub != null) {
-        _muxSub?.cancel();
-        _muxSub = null;
-        _client?.close();
-        _client = null;
-        _setPhase(ConnPhase.error);
-        _scheduleReconnect();
-      }
-    });
+  /// WS 握手成功即传输就绪（F2-4，实机回归 2026-09-09）：mux WS 为事件驱动
+  /// 推帧——无 running 会话时服务器连上后静默，不能以首帧判就绪。
+  void _onTransportOpen() {
+    _backoffStep = 0;
+    _lastError = null;
+    _setPhase(ConnPhase.streaming);
   }
 
   void _handleFrame(ServerRequestFrame frame) {
@@ -171,6 +165,7 @@ class DshConnection {
       // 订阅就绪：进入 streaming；**每会话一帧** {sessionId, lastSeq}
       //（dsh-client-connection events.schema 实证，非 items 列表）。
       _backoffStep = 0;
+      _lastError = null; // 恢复 streaming 后清空失败原因
       _setPhase(ConnPhase.streaming);
       _forward(frame);
       final sid = payload['sessionId']?.toString();
