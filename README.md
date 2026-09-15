@@ -1,6 +1,6 @@
 # dsh-desktop
 
-> 状态：v0.4.0 重构中（分支 `feat/v0.4-manager`；Gate-A v1.1 / Gate-B v1.0 已确认）。
+> 状态：v0.4.0 MVP 已发布（分支 `feat/v0.4-m3` 已 push origin；发版明细见 `RELEASES.md`，打包见 `scripts/package_release.ps1`）。
 
 ## 当前定位（v0.4.0 起）
 
@@ -25,7 +25,7 @@
 
 - M1 协议客户端原型：连真实 `dsh web` 完成一轮对话（CLI）
 - M2 引擎/实例管理 + 纯 API profile 实测
-- M3 v0.4.0 MVP（Windows）：对话工作台 + 实例管理
+- M3 v0.4.0 MVP（Windows）：对话工作台 + 实例管理 ✅ 已发布（2026-09-09，tag `v0.4.0`）
 - M4 macOS/Linux 发布 + 纯 API profile 切换（若 M2 收益成立）
 
 ## 历史版本
