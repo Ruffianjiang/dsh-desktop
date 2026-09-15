@@ -28,6 +28,12 @@
 - M3 v0.4.0 MVP（Windows）：对话工作台 + 实例管理 ✅ 已发布（2026-09-09，tag `v0.4.0`）
 - M4 macOS/Linux 发布 + 纯 API profile 切换（若 M2 收益成立）
 
+## 下载
+
+- **v0.4.0 MVP（Windows x64）**：[GitHub Release](https://github.com/Ruffianjiang/dsh-desktop/releases/tag/v0.4.0) · [直接下载 zip](https://github.com/Ruffianjiang/dsh-desktop/releases/download/v0.4.0/dsh-desktop-v0.4.0-mvp-windows-x64.zip)
+  - 运行需预装 **Node.js ≥ 20 LTS** 与 **Visual C++ Redistributable 2022 x64**（包未自带 VC 运行库）
+  - 界面预览见 Release 资产；发版明细见 `RELEASES.md` 与发布包内 `README.md`
+
 ## 历史版本
 
 - v0.1.0–v0.3.0（Electron / Tauri 2 封装 dsh web 外壳）已归档至 `legacy/`，代码与 Release tag 保留可回溯。
