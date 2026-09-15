@@ -54,12 +54,18 @@ if (-not $FlutterPath -or -not (Test-Path $FlutterPath)) {
 }
 Write-Host "[1/4] flutter: $FlutterPath"
 
-# --- Build ---
+# --- Build (must run from the Flutter app root, not the monorepo root) ---
 Write-Host "[2/4] flutter build windows --release (build-name=$BuildName build-number=$BuildNumber)"
-& $FlutterPath build windows --release --build-name=$BuildName --build-number=$BuildNumber
-if ($LASTEXITCODE -ne 0) {
-  Write-Error "flutter build failed (exit $LASTEXITCODE). Ensure Visual Studio 'Desktop development with C++' is installed."
-  exit $LASTEXITCODE
+Write-Host "      cwd: $AppDir"
+Push-Location $AppDir
+try {
+  & $FlutterPath build windows --release --build-name=$BuildName --build-number=$BuildNumber
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "flutter build failed (exit $LASTEXITCODE). Ensure Visual Studio 'Desktop development with C++' is installed."
+    exit $LASTEXITCODE
+  }
+} finally {
+  Pop-Location
 }
 
 $ReleaseDir = Join-Path $AppDir "build\windows\x64\runner\Release"

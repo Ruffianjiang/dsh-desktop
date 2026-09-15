@@ -9,7 +9,7 @@
 |---|---|
 | **操作系统** | Windows 10 / 11 x64 |
 | **Node.js** | **必须预装**，`node` 在 PATH 中且版本 ≥ dsh 引擎要求（建议 ≥ 20 LTS）。本程序**不包含** Node.js 运行时。 |
-| **Visual C++ 运行时** | 由本包自带（`msvcp140.dll` / `vcruntime140.dll` 等），无需另行安装。 |
+| **Visual C++ 运行时** | **未随包分发**——目标机需安装 **Visual C++ Redistributable for Visual Studio 2022 (x64)**；本机已装 Visual Studio 则已满足。 |
 | **dsh 引擎** | 由本程序负责安装到托管目录 `~/.dsh-desktop/engine`，或从 PATH 探测现有 dsh。 |
 
 ## 安装与启动
