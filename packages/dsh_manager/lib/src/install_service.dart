@@ -111,12 +111,15 @@ class InstallService {
   /// 托管引擎根目录（默认 `~/.dsh-desktop/engine`）。
   final String? engineHome;
 
-  String get defaultPrefix {
+  String get defaultPrefix => engineHome ?? computeDefaultPrefix();
+
+  /// 默认托管 prefix（静态可算：无需实例化服务即可用于 NodeEnv.probe / UI）。
+  static String computeDefaultPrefix() {
     final home = Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '.';
-    return engineHome ??
-        '$home${Platform.pathSeparator}.dsh-desktop${Platform.pathSeparator}engine';
+    return '$home${Platform.pathSeparator}.dsh-desktop'
+        '${Platform.pathSeparator}engine';
   }
 
   /// 探测某 prefix 下的已装版本。

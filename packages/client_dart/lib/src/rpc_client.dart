@@ -32,7 +32,9 @@ class DshClient {
   void _setState(ConnState next) {
     if (next != _state) {
       _state = next;
-      _stateController.add(next);
+      // close() 与 openStream 的 finally 存在交错（重连/关闭场景），
+      // 控制器已关闭时静默忽略，避免 Bad state 崩溃（M3 实测）。
+      if (!_stateController.isClosed) _stateController.add(next);
     }
   }
 
@@ -84,8 +86,11 @@ class DshClient {
   /// 实测：该端点要求 WebSocket 升级（HTTP GET → 426 Upgrade Required），
   /// 与参考客户端「HTTP-up / WebSocket-down」一致。每帧为 text 消息：
   /// 直接 JSON 信封，或 `data:` 行 + 空行分帧的 SSE 风格块（兼容两种）。
+  ///
+  /// [onOpen]：WS 握手成功后回调（T9 实机回归 2026-09-09：mux WS 为事件驱动
+  /// 推帧——无 running 会话时服务器连上后静默，调用方不能以首帧判就绪）。
   Stream<ServerRequestFrame> openStream(String path,
-      {Duration? timeout}) {
+      {Duration? timeout, void Function()? onOpen}) {
     WebSocket? ws;
     late final StreamController<ServerRequestFrame> controller;
     controller = StreamController<ServerRequestFrame>(
@@ -98,6 +103,7 @@ class DshClient {
           final socket = await WebSocket.connect(wsUri);
           ws = socket;
           _setState(ConnState.connected);
+          onOpen?.call();
           await for (final raw in socket) {
             if (raw is! String) continue;
             for (final frame in _decodeFrames(raw)) {
@@ -157,6 +163,34 @@ class DshClient {
   void close() {
     _http.close(force: true);
     _stateController.close();
+  }
+
+  /// 审批 / ask-user 回写：`POST /api/respond`。
+  ///
+  /// body 为 **client-response 信封**（`{type, rpcId, result:{ok,value}}`），
+  /// 服务端经 pending 表按 rpcId 路由后对 value 做二次解析
+  /// （dsh-client-connection client.js:5461 实证）。返回 `{accepted, reason?}`。
+  Future<Map<String, dynamic>?> respondClientResponse({
+    required String rpcId,
+    required Map<String, dynamic> value,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final message = <String, dynamic>{
+      'type': 'client-response',
+      'rpcId': rpcId,
+      'result': {'ok': true, 'value': value},
+    };
+    final request = await _http.postUrl(_uri('/api/respond'));
+    request.headers.contentType = ContentType.json;
+    request.write(jsonEncode(message));
+    final response = await request.close().timeout(timeout);
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException('respond failed: HTTP ${response.statusCode}',
+          uri: _uri('/api/respond'));
+    }
+    final decoded = jsonDecode(body);
+    return decoded is Map ? decoded.cast<String, dynamic>() : null;
   }
 }
 
